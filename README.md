@@ -10,13 +10,15 @@ Run `notebook.ipynb` to reproduce all results. The performance table below is po
 
 | Strategy | Ann. Return | Ann. Vol | Sharpe | Max Drawdown | Calmar |
 |---|---|---|---|---|---|
-| Vol Target – Roll 20d | — | — | — | — | — |
-| Vol Target – Roll 60d | — | — | — | — | — |
-| Vol Target – EWMA (λ=0.94) | — | — | — | — | — |
-| Vol Target – Yang-Zhang 20d | — | — | — | — | — |
-| Buy-and-Hold | — | — | — | — | — |
+| Vol Target – Roll 20d | 12.48% | 16.32% | **0.765** | −36.50% | 0.342 |
+| Vol Target – Roll 60d | 11.39% | 16.13% | 0.706 | −34.05% | 0.334 |
+| Vol Target – EWMA (λ=0.94) | 11.54% | 15.64% | 0.738 | −35.06% | 0.329 |
+| Vol Target – Yang-Zhang 20d | 12.22% | 26.78% | 0.456 | −74.81% | 0.163 |
+| Buy-and-Hold | 11.14% | 19.05% | 0.585 | −55.19% | 0.202 |
 
-*All strategies evaluated over the same post-warmup period. Transaction costs: 1.5 bps per unit of |Δweight|. Risk-free rate: 0%.*
+*SPY 2005-04-01 to 2026-05-13 (21 years). Transaction costs: 1.5 bps per unit of |Δweight|. Risk-free rate: 0%.*
+
+The Yang-Zhang estimator fails in this backtest: it collapses to near-zero on dividend-adjustment artefact days in the yfinance OHLCV data, driving the weight to the 2× cap just before large moves. Close-to-close estimators (rolling std, EWMA) are immune because they depend only on the Close column, which is consistently adjusted. See the Conclusions section of the notebook for a full discussion.
 
 ---
 
