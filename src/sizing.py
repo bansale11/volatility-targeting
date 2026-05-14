@@ -126,3 +126,29 @@ def compute_riskparity_weights(
 
     # Step 4: Lag by one day — mandatory, mirrors compute_weights()
     return weights_scaled.shift(1)
+
+
+def trend_filter(
+    prices: pd.DataFrame | pd.Series,
+    window: int = 200,
+) -> pd.DataFrame | pd.Series:
+    """
+    Binary trend signal: 1 (in) if price > window-day moving average, else 0 (out).
+
+    Lagged by one day so the signal on day t uses only prices through day t−1.
+    Multiply risk parity (or any) weights by this signal to zero out positions
+    in assets that are in a downtrend.
+
+    Parameters
+    ----------
+    prices : Close price series or DataFrame (one column per asset).
+    window : Look-back window in trading days (default 200, ~10 months).
+
+    Returns
+    -------
+    Same shape as prices, dtype float (0.0 or 1.0), NaN during warmup.
+    """
+    ma = prices.rolling(window=window, min_periods=window).mean()
+    signal = (prices > ma).astype(float)
+    signal[prices.isna() | ma.isna()] = float("nan")
+    return signal.shift(1)
