@@ -1,0 +1,12 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+data_cache/
+notebook_executed.ipynb
+*.egg-info/
+dist/
+build/
+.DS_Store
