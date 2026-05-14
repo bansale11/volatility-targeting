@@ -95,3 +95,65 @@ def run_backtest(
     )
 
     return combined.drop(columns=["simple_return"])
+
+
+def run_multiasset_backtest(
+    log_returns: pd.DataFrame,
+    weights: pd.DataFrame,
+    cost_bps: float = DEFAULT_COST_BPS,
+    initial_capital: float = 1.0,
+) -> pd.DataFrame:
+    """
+    Simulate a multi-asset vol-targeted or risk-parity strategy.
+
+    Parameters
+    ----------
+    log_returns : DataFrame of daily log returns, one column per asset.
+    weights     : DataFrame of position weights (already lagged by one day).
+                  NaN rows (warmup) are excluded automatically.
+    cost_bps    : Transaction cost in basis points per unit of total |Δweight|.
+                  Turnover is summed across all assets on each day.
+
+    Returns
+    -------
+    DataFrame indexed by date with columns:
+        portfolio_return  sum of w_i × simple_return_i (pre-cost)
+        turnover          Σ|Δw_i| across all assets
+        cost              turnover × cost_per_unit
+        net_return        portfolio_return − cost
+        bah_return        equal-weight buy-and-hold return (1/n per asset)
+        equity            cumulative strategy portfolio value
+        bah_equity        cumulative equal-weight B&H portfolio value
+    """
+    simple_returns = np.exp(log_returns) - 1
+
+    valid_weights = weights.dropna()
+    valid_returns = simple_returns.reindex(valid_weights.index).dropna()
+    idx = valid_weights.index.intersection(valid_returns.index)
+
+    w = valid_weights.loc[idx]
+    r = valid_returns.loc[idx]
+
+    cost_per_unit = cost_bps / 10_000
+
+    portfolio_return = (w * r).sum(axis=1)
+
+    turnover = w.diff().abs().sum(axis=1)
+    turnover.iloc[0] = w.iloc[0].abs().sum()
+
+    cost = turnover * cost_per_unit
+    net_return = portfolio_return - cost
+    bah_return = r.mean(axis=1)
+
+    return pd.DataFrame(
+        {
+            "portfolio_return": portfolio_return,
+            "turnover": turnover,
+            "cost": cost,
+            "net_return": net_return,
+            "bah_return": bah_return,
+            "equity": initial_capital * (1 + net_return).cumprod(),
+            "bah_equity": initial_capital * (1 + bah_return).cumprod(),
+        },
+        index=idx,
+    )

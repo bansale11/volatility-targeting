@@ -17,6 +17,7 @@ that would not be present in live trading and inflates the Sharpe ratio.
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 DEFAULT_TARGET_VOL: float = 0.15   # 15% annualised
@@ -57,3 +58,71 @@ def compute_weights(
     weights = raw_weight.clip(lower=0.0, upper=max_leverage)
     weights.name = "weight"
     return weights
+
+
+def compute_riskparity_weights(
+    returns_df: pd.DataFrame,
+    target_vol: float = DEFAULT_TARGET_VOL,
+    window: int = 60,
+    max_leverage: float = DEFAULT_MAX_LEVERAGE,
+) -> pd.DataFrame:
+    """
+    Inverse-volatility risk parity weights scaled to a target portfolio vol.
+
+    For each day t (using only data through t−1 after the final lag):
+
+    1. Rolling per-asset vol  →  inverse-vol weights normalised to sum = 1
+    2. Rolling pairwise covariances  →  portfolio vol  σ_p = √(w'Σw)
+    3. Scale: w_final = w × (target_vol / σ_p), capped at max_leverage
+    4. One-day lag (no look-ahead)
+
+    Parameters
+    ----------
+    returns_df   : DataFrame of log returns, one column per asset.
+    target_vol   : Desired annualised portfolio vol (default 15%).
+    window       : Rolling window in trading days (default 60).
+    max_leverage : Upper bound on sum of absolute weights (default 2×).
+
+    Returns
+    -------
+    DataFrame with the same columns as returns_df, NaN during warmup,
+    lagged by one day so weights on day t use only data through day t−1.
+    """
+    tickers = list(returns_df.columns)
+
+    # Step 1: Rolling per-asset vol and inverse-vol normalised weights
+    vols = (
+        returns_df
+        .rolling(window=window, min_periods=window)
+        .std(ddof=1)
+        .mul(np.sqrt(252))
+    )
+    inv_vol = 1.0 / vols
+    weights_raw = inv_vol.div(inv_vol.sum(axis=1), axis=0)
+
+    # Step 2: Portfolio variance via rolling pairwise covariances (vectorised)
+    port_var = pd.Series(0.0, index=returns_df.index)
+    for t1 in tickers:
+        for t2 in tickers:
+            cov_series = (
+                returns_df[t1]
+                .rolling(window=window, min_periods=window)
+                .cov(returns_df[t2], ddof=1)
+                .mul(252)
+            )
+            port_var = port_var + weights_raw[t1] * weights_raw[t2] * cov_series
+
+    portfolio_vol = np.sqrt(port_var.clip(lower=0))
+
+    # Step 3: Scale to target vol, cap leverage
+    scale = (target_vol / portfolio_vol).clip(upper=max_leverage)
+    weights_scaled = weights_raw.mul(scale, axis=0)
+
+    total = weights_scaled.sum(axis=1)
+    overflow = total > max_leverage
+    if overflow.any():
+        scale_down = (max_leverage / total).where(overflow, other=1.0)
+        weights_scaled = weights_scaled.mul(scale_down, axis=0)
+
+    # Step 4: Lag by one day — mandatory, mirrors compute_weights()
+    return weights_scaled.shift(1)

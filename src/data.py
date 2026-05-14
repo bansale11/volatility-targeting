@@ -126,6 +126,44 @@ def load_ohlcv(
 
 
 
+def load_multi_returns(
+    tickers: list[str],
+    start: str = "2005-01-01",
+    end: str | None = None,
+    cache_dir: Path | str = DEFAULT_CACHE_DIR,
+    force_download: bool = False,
+) -> pd.DataFrame:
+    """
+    Load aligned log returns for multiple tickers.
+
+    Each ticker is loaded via load_ohlcv (with caching).  The returned
+    DataFrame uses an inner join so only dates where all assets have data
+    are included.  Any remaining NaN rows are dropped.
+
+    Parameters
+    ----------
+    tickers     : List of ticker symbols, e.g. ['SPY', 'TLT', 'GLD']
+    start       : ISO start date
+    end         : ISO end date (default: today)
+    cache_dir   : Directory for parquet cache files
+    force_download : Re-download even if cached
+
+    Returns
+    -------
+    DataFrame with DatetimeIndex and one column per ticker (log returns).
+    """
+    frames = {
+        ticker: load_ohlcv(
+            ticker, start=start, end=end,
+            cache_dir=cache_dir, force_download=force_download,
+        )["log_return"]
+        for ticker in tickers
+    }
+    returns = pd.concat(frames, axis=1, join="inner")
+    returns.columns.name = None
+    return returns.dropna()
+
+
 def _validate_and_clean(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
     """
     Validate raw OHLCV, forward-fill short gaps, and warn on anomalies.
